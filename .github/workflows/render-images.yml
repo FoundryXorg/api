@@ -39,8 +39,11 @@ jobs:
           git add previews pins scripts/failed.txt 2>/dev/null || true
           if ! git diff --cached --quiet; then
             git commit -m "Add font images"
-            git pull --rebase -q
-            git push
+            for i in 1 2 3 4 5; do
+              git pull --rebase -X theirs -q && git push && break
+              git rebase --abort 2>/dev/null || true
+              sleep $((i * 5))
+            done
           fi
       - name: Tell the sheet
         env:
