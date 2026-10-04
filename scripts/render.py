@@ -149,10 +149,14 @@ def render():
             fold = folder_of(f['path']); item = {'id': fid}
             if not f.get('preview'):
                 p = 'previews/%s/%s.png' % (fold, fid); os.makedirs(os.path.dirname(p), exist_ok=True)
-                preview(fp, name, enc).save(p, optimize=True); item['preview'] = p
+                if not os.path.exists(p):          # already in the repo (e.g. made from the admin panel): just register it
+                    preview(fp, name, enc).save(p, optimize=True)
+                item['preview'] = p
             if not f.get('pinImage'):
                 p = 'pins/%s/%s.png' % (fold, fid); os.makedirs(os.path.dirname(p), exist_ok=True)
-                pin(fp, name, enc).save(p, optimize=True); item['pinImage'] = p
+                if not os.path.exists(p):
+                    pin(fp, name, enc).save(p, optimize=True)
+                item['pinImage'] = p
             marks.append(item); print('ok', name)
         except Exception as e:
             print('FAILED', name, e); newfail.append(fid)
