@@ -36,7 +36,7 @@ jobs:
       - name: Build pages
         env:
           SCRIPT_URL: ${{ secrets.SCRIPT_URL }}
-          GSC_VERIFY: ${{ vars.GSC_VERIFY }}
+          GSC_VERIFY: ${{ vars.GSC_VERIFY || secrets.GSC_VERIFY }}
           SITE_URL: ${{ vars.SITE_URL }}
         run: python scripts/build_site.py
       - uses: actions/upload-pages-artifact@v3
