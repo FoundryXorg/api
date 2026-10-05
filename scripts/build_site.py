@@ -7,12 +7,14 @@ Env: SCRIPT_URL (Apps Script /exec), SITE_URL, APP_URL, RAW_BASE, GSC_VERIFY (op
 import html, json, os, re, shutil, urllib.parse, urllib.request
 from datetime import datetime, timezone
 
-VERSION = 'v1.6.0'
+VERSION = 'v1.6.1'
 SCRIPT_URL = os.environ.get('SCRIPT_URL', '').strip()
 SITE_URL = (os.environ.get('SITE_URL') or 'https://foundryxorg.github.io/api').rstrip('/')
 APP_URL = (os.environ.get('APP_URL') or 'https://fontfoundry.blogspot.com').rstrip('/')
 RAW_BASE = os.environ.get('RAW_BASE') or 'https://raw.githubusercontent.com/FoundryXorg/api/main/'
 GSC_VERIFY = os.environ.get('GSC_VERIFY', '').strip()
+_m = re.search(r'content\s*=\s*["\']([^"\']+)', GSC_VERIFY)       # accept the whole pasted <meta> tag too
+GSC_VERIFY = (_m.group(1) if _m else GSC_VERIFY).strip().strip('"\'')
 OUT = os.environ.get('OUT_DIR', 'site')
 PER_PAGE = 60
 BASE = urllib.parse.urlparse(SITE_URL).path.rstrip('/')          # '/api' on a project site, '' on a custom domain
