@@ -1,0 +1,54 @@
+name: Build site
+
+on:
+  workflow_run:
+    workflows: ["Render font images"]
+    types: [completed]
+  push:
+    paths: ['scripts/build_site.py', 'static/**', '.github/workflows/build-site.yml']
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            previews
+            scripts
+            static
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build pages
+        env:
+          SCRIPT_URL: ${{ secrets.SCRIPT_URL }}
+          GSC_VERIFY: ${{ vars.GSC_VERIFY }}
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: python scripts/build_site.py
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
