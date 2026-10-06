@@ -6,8 +6,9 @@ Env: SCRIPT_URL (Apps Script /exec), SITE_URL, APP_URL, RAW_BASE, GSC_VERIFY (op
 """
 import html, json, os, re, shutil, urllib.parse, urllib.request
 from datetime import datetime, timezone
+from email.utils import format_datetime
 
-VERSION = 'v1.6.1'
+VERSION = 'v1.8.0'
 SCRIPT_URL = os.environ.get('SCRIPT_URL', '').strip()
 SITE_URL = (os.environ.get('SITE_URL') or 'https://foundryxorg.github.io/api').rstrip('/')
 APP_URL = (os.environ.get('APP_URL') or 'https://fontfoundry.blogspot.com').rstrip('/')
@@ -167,6 +168,7 @@ def layout(title, description, path, body, image='', ld=None, head=''):
         '<meta name="twitter:card" content="%s">' % ('summary_large_image' if image else 'summary'),
         ('<meta name="google-site-verification" content="%s">' % esc(GSC_VERIFY, True)) if GSC_VERIFY else '',
         '<link rel="stylesheet" href="%s">' % href('assets/s.css'),
+        '<link rel="alternate" type="application/rss+xml" title="%s" href="%s">' % (NAME, href('rss.xml')),
         head,
         ('<script type="application/ld+json">%s</script>' % json.dumps(ld, ensure_ascii=False).replace('</', '<\\/')) if ld else '',
         '</head><body>',
@@ -346,6 +348,31 @@ def build():
         rows.append('<url><loc>%s</loc><lastmod>%s</lastmod></url>' % (esc(u(p)), last or now))
     rows.append('</urlset>')
     write('sitemap.xml', '\n'.join(rows))
+    # ----- RSS feed for Pinterest: static (no redirects), links stay on the Blogger domain that is claimed in Pinterest -----
+    def pub(f):
+        try:
+            d = datetime.fromisoformat(str(f.get('createdAt') or '').replace('Z', '+00:00'))
+        except Exception:
+            d = datetime.now(timezone.utc)
+        return format_datetime(d if d.tzinfo else d.replace(tzinfo=timezone.utc))
+    feed = [f for f in fonts if f['_img'] or f.get('pinImage')][:100]
+    x = lambda v: esc(str(v), True)
+    out = ['<?xml version="1.0" encoding="UTF-8"?>',
+           '<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/" xmlns:atom="http://www.w3.org/2005/Atom"><channel>',
+           '<title>%s</title><link>%s/</link><description>Free Bangla and English fonts</description><language>en</language>' % (NAME, x(APP_URL)),
+           '<atom:link href="%s" rel="self" type="application/rss+xml"/>' % x(u('rss.xml')),
+           '<lastBuildDate>%s</lastBuildDate>' % format_datetime(datetime.now(timezone.utc))]
+    for f in feed:
+        link = '%s/?font=%s' % (APP_URL, urllib.parse.quote(f['_slug']))
+        tall = bool(f.get('pinImage'))
+        im = raw(f['pinImage']) if tall else f['_img']
+        out.append('<item><title>%s</title><link>%s</link><description>%s</description><guid isPermaLink="true">%s</guid><pubDate>%s</pubDate>'
+                   '<enclosure url="%s" type="image/png" length="0"/><media:content url="%s" medium="image" type="image/png" width="%d" height="%d"/></item>' % (
+                       x('%s \u2014 Free %s Font' % (nm(f), kind(f))), x(link),
+                       x('Download %s for free. Preview it in Bangla and English first. #fonts #bangla #typography' % nm(f)),
+                       x(link), pub(f), x(im), x(im), 1000 if tall else 1200, 1500 if tall else 630))
+    out.append('</channel></rss>')
+    write('rss.xml', '\n'.join(out))
     write('robots.txt', 'User-agent: *\nAllow: /\n\nSitemap: %s\n' % u('sitemap.xml'))
     write('404.html', layout('Page not found | ' + NAME, 'This page does not exist.', '404.html',
                              '<h1>Page not found</h1><p class="lead">That page does not exist. <a href="%s">Go to the home page</a> or <a href="%s">browse all fonts</a>.</p>' % (href(''), href('fonts/'))))
