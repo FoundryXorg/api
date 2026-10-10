@@ -1,0 +1,35 @@
+name: Build image-search index (v1.9.0)
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 3 * * *'
+permissions:
+  contents: write
+concurrency:
+  group: imgindex
+  cancel-in-progress: false
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: |
+          sudo apt-get update -y && sudo apt-get install -y libraqm0 libfribidi0 libharfbuzz0b
+          pip install pillow numpy scipy fonttools
+      - name: Build index
+        env:
+          SCRIPT_URL: ${{ vars.SCRIPT_URL || secrets.SCRIPT_URL }}
+        run: python scripts/build_imgindex.py
+      - name: Commit
+        run: |
+          git config user.name "font-foundry-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add imgindex/index.json
+          if git diff --cached --quiet; then echo "no change"; exit 0; fi
+          git commit -m "Update image-search index"
+          for i in 1 2 3 4; do git pull --rebase -X theirs && git push && break || sleep 5; done
