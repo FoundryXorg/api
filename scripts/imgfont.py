@@ -212,6 +212,10 @@ def descriptor(gray, invert=None, return_names=False):
     nm = normalise(gray, invert)
     if nm is None: return None
     ink, lab, comps, big, p90 = nm
+    return descriptor_core(ink, lab, comps, big, p90, return_names)
+
+
+def descriptor_core(ink, lab, comps, big, p90, return_names=False):
     names = []; v = []
     def add(name, x): names.append(name); v.append(float(x))
     rh = runs_len(ink, 1); rv = runs_len(ink, 0)
