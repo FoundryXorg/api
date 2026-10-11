@@ -1,6 +1,19 @@
-name: Build image-search index (v1.9.0)
+name: Image search - self-training robot (v2.0.0)
+# Starts by itself when these files are uploaded, then every night. It trains itself from your font library - nothing to do by hand.
 on:
   workflow_dispatch:
+    inputs:
+      force_train:
+        description: 'Retrain the network from scratch (1 = yes)'
+        required: false
+        default: '0'
+  push:
+    paths:
+      - '.github/workflows/build-imgindex.yml'
+      - 'scripts/build_imgindex.py'
+      - 'scripts/imgfeat.py'
+      - 'scripts/imgaug.py'
+      - 'scripts/imgfont.py'
   schedule:
     - cron: '30 3 * * *'
 permissions:
@@ -11,7 +24,7 @@ concurrency:
 jobs:
   index:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -20,16 +33,19 @@ jobs:
       - name: Install
         run: |
           sudo apt-get update -y && sudo apt-get install -y libraqm0 libfribidi0 libharfbuzz0b
-          pip install pillow numpy scipy fonttools
-      - name: Build index
+          pip install pillow numpy scipy scikit-learn fonttools
+      - name: Train (if needed) and build the fingerprint index
         env:
           SCRIPT_URL: ${{ vars.SCRIPT_URL || secrets.SCRIPT_URL }}
+          FORCE_TRAIN: ${{ github.event.inputs.force_train || '0' }}
+          WORKERS: '4'
+          TIME_BUDGET_MIN: '330'
         run: python scripts/build_imgindex.py
       - name: Commit
         run: |
           git config user.name "font-foundry-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add imgindex/index.json
+          git add imgindex/bn.json imgindex/en.json
           if git diff --cached --quiet; then echo "no change"; exit 0; fi
           git commit -m "Update image-search index"
           for i in 1 2 3 4; do git pull --rebase -X theirs && git push && break || sleep 5; done
