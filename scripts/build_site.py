@@ -8,7 +8,7 @@ import html, json, os, re, shutil, urllib.parse, urllib.request
 from datetime import datetime, timezone
 from email.utils import format_datetime
 
-VERSION = 'v1.8.0'
+VERSION = 'v2.1.0'
 SCRIPT_URL = os.environ.get('SCRIPT_URL', '').strip()
 SITE_URL = (os.environ.get('SITE_URL') or 'https://foundryxorg.github.io/api').rstrip('/')
 APP_URL = (os.environ.get('APP_URL') or 'https://fontfoundry.blogspot.com').rstrip('/')
@@ -49,13 +49,37 @@ def nm(f):
     return str(f.get('name') or f.get('fileName') or 'Font').strip()
 
 
+
+# Languages (keep in sync with LANGS in the theme / Code.gs). t = the site name in that script = the default preview text. rtl = right-to-left.
+LANGS = {
+    'bn': ('Bangla', BN, False), 'en': ('English', EN, False),
+    'hi': ('Hindi', 'फ़ॉन्ट फ़ाउंड्री', False), 'ur': ('Urdu', 'فونٹ فاؤنڈری', True), 'ar': ('Arabic', 'فونت فاوندري', True), 'fa': ('Persian', 'فونت فاندری', True),
+    'ta': ('Tamil', 'ஃபாண்ட் ஃபவுண்டரி', False), 'te': ('Telugu', 'ఫాంట్ ఫౌండ్రీ', False), 'gu': ('Gujarati', 'ફૉન્ટ ફાઉન્ડ્રી', False), 'pa': ('Punjabi', 'ਫੌਂਟ ਫਾਊਂਡਰੀ', False),
+    'ml': ('Malayalam', 'ഫോണ്ട് ഫൗണ്ടറി', False), 'kn': ('Kannada', 'ಫಾಂಟ್ ಫೌಂಡ್ರಿ', False), 'he': ('Hebrew', 'פונט פאונדרי', True), 'th': ('Thai', 'ฟอนต์ ฟาวน์ดรี', False),
+    'ru': ('Russian', 'Фонт Фаундри', False), 'el': ('Greek', 'Φοντ Φάουντρι', False),
+}
+
+
+def kind_of(f):
+    """ansi | unicode (Bangla) | latin (English) | any other language code"""
+    if str(f.get('encoding') or '').lower() == 'ansi':
+        return 'ansi'
+    l = ''.join(c for c in str(f.get('lang') or '').lower() if c.isalpha())
+    if not l:
+        l = 'en' if str(f.get('encoding') or '').lower() == 'latin' else 'bn'
+    return 'unicode' if l == 'bn' else ('latin' if l == 'en' else l)
+
+
+def lang_name(k):
+    return {'ansi': 'Bijoy / ANSI', 'unicode': 'Unicode Bangla', 'latin': 'English'}.get(k) or (LANGS.get(k) or (k.upper(),))[0]
+
+
 def enc(f):
-    e = str(f.get('encoding') or '').lower()
-    return e if e in ('unicode', 'ansi', 'latin') else 'unicode'
+    return kind_of(f)
 
 
 def kind(f):
-    return {'ansi': 'Bijoy / ANSI', 'latin': 'English'}.get(enc(f), 'Unicode Bangla')
+    return lang_name(enc(f))
 
 
 def size_txt(f):
@@ -95,12 +119,15 @@ def samples(f):
         return ('BANGLA (ANSI)', ANSI_BN), ('NUMBERS', DIGITS)
     if e == 'latin':
         return ('ENGLISH', EN), ('NUMBERS', DIGITS)
-    return ('BANGLA', BN), ('ENGLISH', EN)
+    if e == 'unicode':
+        return ('BANGLA', BN), ('ENGLISH', EN)
+    o = LANGS.get(e)
+    return (lang_name(e).upper(), o[1] if o else EN), ('ENGLISH', EN)
 
 
 def desc_for(f):
     t = 'Download %s, a free %s font. Preview it in %s, check the file size (%s), then download it free from %s.' % (
-        nm(f), kind(f), 'English and numbers' if enc(f) == 'latin' else 'Bangla and English', size_txt(f), NAME)
+        nm(f), kind(f), 'English and numbers' if enc(f) == 'latin' else ('Bangla and English' if enc(f) in ('unicode', 'ansi') else lang_name(enc(f)) + ' and English'), size_txt(f), NAME)
     return t if len(t) <= 190 else t[:187] + '...'
 
 
@@ -255,7 +282,7 @@ def build():
         name = nm(f)
         title = '%s Font — Free Download & Preview | %s' % (name, NAME)
         rel = related(f)
-        cat_path, cat_name = ('english/', 'English fonts') if enc(f) == 'latin' else ('bangla/', 'Bangla fonts')
+        cat_path, cat_name = ('english/', 'English fonts') if enc(f) == 'latin' else (('bangla/', 'Bangla fonts') if enc(f) in ('unicode', 'ansi') else ('lang/%s/' % enc(f), '%s fonts' % lang_name(enc(f))))
         head = '<style>@font-face{font-family:"ffv";src:url("%s") format("%s");font-display:swap}</style>' % (esc(raw(f['path']), True), fmt)
         shot = ('<img class="shot" src="%s" alt="%s font preview" width="1200" height="630" fetchpriority="high">' % (esc(f['_img'], True), esc(name, True))) if f['_img'] else ''
         fname = str(f.get('fileName') or (name + '.' + ext))
@@ -264,8 +291,8 @@ def build():
             '<h1>%s <span class="badge">%s</span></h1><p class="lead">%s</p>'
             '<section class="panel" aria-label="Live preview">%s'
             '<div style="font-family:ffv,sans-serif">'
-            '<div class="lbl">%s</div><div class="sample" contenteditable="true" spellcheck="false">%s</div>'
-            '<div class="lbl">%s</div><div class="sample sm" contenteditable="true" spellcheck="false">%s</div></div>'
+            '<div class="lbl">%s</div><div class="sample" dir="auto" contenteditable="true" spellcheck="false">%s</div>'
+            '<div class="lbl">%s</div><div class="sample sm" dir="auto" contenteditable="true" spellcheck="false">%s</div></div>'
             '<p style="color:var(--muted);font-size:13px;margin:14px 0 0">Click the text to type your own words.</p></section>'
             '<div class="btns"><a class="btn" id="dl" href="%s" download="%s" rel="noopener">Download %s (%s)</a>'
             '<a class="btn alt" href="%s/?font=%s" rel="noopener">Open in the full library</a></div>'
@@ -316,11 +343,14 @@ def build():
             write(path + 'index.html', layout(ttl, '%s %d fonts, each with a live preview.' % (intro, len(items)) if n == 1 else intro, path, body, chunk[0]['_img'] if chunk else ''))
             pages.append((path, ''))
 
-    bangla = [f for f in fonts if enc(f) != 'latin']
+    bangla = [f for f in fonts if enc(f) in ('unicode', 'ansi')]
     listing('fonts/', 'All fonts', 'Browse every free Bangla and English font in the library.', fonts, 'All Free Fonts')
     listing('bangla/', 'Bangla fonts', 'Free Bangla fonts, both Unicode and Bijoy / ANSI.', bangla, 'Free Bangla Fonts')
     listing('english/', 'English fonts', 'Free English (Latin) fonts.', by_enc.get('latin', []), 'Free English Fonts')
     listing('ansi/', 'Bijoy / ANSI Bangla fonts', 'Legacy Bijoy / ANSI Bangla fonts for use with Bijoy keyboards.', by_enc.get('ansi', []), 'Free Bijoy ANSI Fonts')
+    other_langs = sorted((k for k in by_enc if k not in ('unicode', 'ansi', 'latin')), key=lambda k: (-len(by_enc[k]), k))
+    for k in other_langs:      # Hindi, Urdu, Arabic, ... get their own crawlable listing automatically
+        listing('lang/%s/' % k, '%s fonts' % lang_name(k), 'Free %s fonts with a live preview.' % lang_name(k), by_enc[k], 'Free %s Fonts' % lang_name(k))
     listing('popular/', 'Most popular fonts', 'The most downloaded fonts in the library.',
             sorted(fonts, key=lambda x: (-dl(x), str(x['id']))), 'Most Popular Free Fonts')
 
@@ -328,17 +358,17 @@ def build():
     latest = fonts[:24]
     top = sorted(fonts, key=lambda x: (-dl(x), str(x['id'])))[:12]
     body = (
-        '<h1>Free Bangla &amp; English fonts</h1>'
-        '<p class="lead">Preview every font in Bangla and English before you download. %s fonts and growing &mdash; new ones added all the time.</p>'
-        '<div class="cats"><a href="%s">All fonts (%s)</a><a href="%s">Bangla (%s)</a><a href="%s">English (%s)</a><a href="%s">Bijoy / ANSI (%s)</a><a href="%s">Most popular</a></div>'
+        '<h1>Free fonts in Bangla, English &amp; more languages</h1>'
+        '<p class="lead">Preview every font before you download. %s fonts and growing &mdash; new ones added all the time.</p>'
+        '<div class="cats"><a href="%s">All fonts (%s)</a><a href="%s">Bangla (%s)</a><a href="%s">English (%s)</a><a href="%s">Bijoy / ANSI (%s)</a><a href="%s">Most popular</a>' + ''.join('<a href="%s">%s (%s)</a>' % (href('lang/%s/' % k), esc(lang_name(k)), format(len(by_enc[k]), ',')) for k in other_langs) + '</div>'
         '<h2>Latest fonts</h2><ul class="grid">%s</ul><p class="pager"><a href="%s">See all fonts &rarr;</a></p>'
         '<h2>Most popular</h2><ul class="grid">%s</ul>'
     ) % (format(len(fonts), ','), href('fonts/'), format(len(fonts), ','), href('bangla/'), format(len(bangla), ','),
          href('english/'), format(len(by_enc.get('latin', [])), ','), href('ansi/'), format(len(by_enc.get('ansi', [])), ','), href('popular/'),
          ''.join(card(x) for x in latest), href('fonts/'), ''.join(card(x) for x in top))
     ld = {'@context': 'https://schema.org', '@type': 'WebSite', 'name': NAME, 'url': u(''), 'alternateName': 'Font Foundry Bangla'}
-    write('index.html', layout('%s — Free Bangla & English Fonts to Download' % NAME,
-                               'Download free Bangla and English fonts. Preview every font in both scripts before you download. Unicode and Bijoy / ANSI Bangla fonts.',
+    write('index.html', layout('%s — Free Fonts to Download (Bangla, English, Hindi, Urdu, Arabic)' % NAME,
+                               'Download free fonts in Bangla, English, Hindi, Urdu, Arabic and more. Preview every font before you download. Unicode and Bijoy / ANSI Bangla fonts.',
                                '', body, latest[0]['_img'] if latest else '', ld))
 
     # ----- sitemap, robots, 404, assets, extra static files -----
@@ -369,10 +399,15 @@ def build():
         out.append('<item><title>%s</title><link>%s</link><description>%s</description><guid isPermaLink="true">%s</guid><pubDate>%s</pubDate>'
                    '<enclosure url="%s" type="image/png" length="0"/><media:content url="%s" medium="image" type="image/png" width="%d" height="%d"/></item>' % (
                        x('%s \u2014 Free %s Font' % (nm(f), kind(f))), x(link),
-                       x('Download %s for free. Preview it in Bangla and English first. #fonts #bangla #typography' % nm(f)),
+                       x('Download %s for free. Preview it first. #fonts #typography' % nm(f)),
                        x(link), pub(f), x(im), x(im), 1000 if tall else 1200, 1500 if tall else 630))
     out.append('</channel></rss>')
     write('rss.xml', '\n'.join(out))
+    # ----- compact catalog for the mobile app (served from GitHub Pages: fast, no Apps Script) -----
+    cat = [{'id': str(f['id']), 's': f['_slug'], 'n': nm(f), 'e': enc(f), 'd': dl(f), 't': str(f.get('createdAt') or ''),
+            'b': int(float(f.get('fileSize') or 0)), 'f': str(f.get('fileName') or ''), 'u': raw(f['path']),
+            'p': f['_img']} for f in fonts]
+    write('catalog.json', json.dumps({'version': VERSION, 'count': len(cat), 'fonts': cat}, ensure_ascii=False, separators=(',', ':')))
     write('robots.txt', 'User-agent: *\nAllow: /\n\nSitemap: %s\n' % u('sitemap.xml'))
     write('404.html', layout('Page not found | ' + NAME, 'This page does not exist.', '404.html',
                              '<h1>Page not found</h1><p class="lead">That page does not exist. <a href="%s">Go to the home page</a> or <a href="%s">browse all fonts</a>.</p>' % (href(''), href('fonts/'))))
