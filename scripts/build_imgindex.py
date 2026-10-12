@@ -223,6 +223,8 @@ def main():
     live = {str(f['id']) for f in fonts}
     by_space = {'bn': [], 'en': []}
     for f in fonts:
+        if str(f.get('lang') or '').lower() not in ('', 'bn', 'en'):
+            continue          # Hindi / Urdu / Arabic ... fonts are not part of the Bangla/English image-search spaces
         script = SCRIPT_OF.get(str(f.get('encoding') or 'unicode').lower(), 'bn')
         by_space[SPACE_OF[script]].append((str(f['id']), f['path'], script))
     log('catalog', len(fonts), '| Bangla space', len(by_space['bn']), '| English space', len(by_space['en']))
