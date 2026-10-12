@@ -58,17 +58,59 @@ def fit(path_or_fn, text, size, maxw, step=4):
     return size
 
 
-def samples(enc):
-    if enc == 'ansi':
+# Languages (keep in sync with LANGS in the theme / Code.gs). t = the site name in that script = the default preview text. rtl = right-to-left.
+LANGS = {
+    'bn': ('Bangla', BN, False), 'en': ('English', EN, False),
+    'hi': ('Hindi', 'फ़ॉन्ट फ़ाउंड्री', False), 'ur': ('Urdu', 'فونٹ فاؤنڈری', True), 'ar': ('Arabic', 'فونت فاوندري', True), 'fa': ('Persian', 'فونت فاندری', True),
+    'ta': ('Tamil', 'ஃபாண்ட் ஃபவுண்டரி', False), 'te': ('Telugu', 'ఫాంట్ ఫౌండ్రీ', False), 'gu': ('Gujarati', 'ફૉન્ટ ફાઉન્ડ્રી', False), 'pa': ('Punjabi', 'ਫੌਂਟ ਫਾਊਂਡਰੀ', False),
+    'ml': ('Malayalam', 'ഫോണ്ട് ഫൗണ്ടറി', False), 'kn': ('Kannada', 'ಫಾಂಟ್ ಫೌಂಡ್ರಿ', False), 'he': ('Hebrew', 'פונט פאונדרי', True), 'th': ('Thai', 'ฟอนต์ ฟาวน์ดรี', False),
+    'ru': ('Russian', 'Фонт Фаундри', False), 'el': ('Greek', 'Φοντ Φάουντρι', False),
+}
+
+
+def kind_of(f):
+    """ansi | unicode (Bangla) | latin (English) | any other language code"""
+    if str(f.get('encoding') or '').lower() == 'ansi':
+        return 'ansi'
+    l = ''.join(c for c in str(f.get('lang') or '').lower() if c.isalpha())
+    if not l:
+        l = 'en' if str(f.get('encoding') or '').lower() == 'latin' else 'bn'
+    return 'unicode' if l == 'bn' else ('latin' if l == 'en' else l)
+
+
+def lang_name(k):
+    return {'ansi': 'Bijoy / ANSI', 'unicode': 'Unicode Bangla', 'latin': 'English'}.get(k) or (LANGS.get(k) or (k.upper(),))[0]
+
+
+def other(k):
+    return LANGS.get(k)
+
+
+def samples(k):
+    if k == 'ansi':
         return ANSI_BN, ANSI_DIGITS
-    if enc == 'latin':
+    if k == 'latin':
         return EN, 'ABCDEFG abcdefg 12345'
-    return BN, EN
+    if k == 'unicode':
+        return BN, EN
+    o = other(k)
+    return (o[1] if o else EN), EN
+
+
+def rtl_text(d, xy_left, xy_right, y, text, font, fill, rtl):
+    if rtl:
+        try:
+            d.text((xy_right, y), text, font=font, fill=fill, anchor='rs', direction='rtl'); return
+        except Exception:
+            pass
+    d.text((xy_left, y), text, font=font, fill=fill, anchor='ls')
+
 
 
 def preview(fp, name, enc):
     W, H = 1200, 630
-    s1, s2 = ('ABCDEFGHIJKLM abcdefghijklm', EN + ' 1234567890') if enc == 'latin' else (ANSI_BN, ANSI_DIGITS) if enc == 'ansi' else (BN, EN)
+    s1, s2 = ('ABCDEFGHIJKLM abcdefghijklm', EN + ' 1234567890') if enc == 'latin' else samples(enc)
+    rtl = bool(other(enc) and other(enc)[2])
     im = Image.new('RGB', (W, H), '#f6f3ed'); d = ImageDraw.Draw(im)
     d.rounded_rectangle((30, 30, W - 30, H - 30), 28, fill='#fffdf9', outline='#e6e0d5', width=2)
     d.text((80, 100), 'FONT FOUNDRY', font=ui(22), fill='#ff5b35', anchor='ls')
@@ -76,7 +118,7 @@ def preview(fp, name, enc):
     d.text((80, 170), name, font=ui(z), fill='#161616', anchor='ls')
     d.rectangle((80, 200, W - 80, 201), fill='#e6e0d5')
     z1 = fit(lambda s: fnt(fp, s), s1, 120, W - 160)
-    d.text((80, 360), s1, font=fnt(fp, z1), fill='#161616', anchor='ls')
+    rtl_text(d, 80, W - 80, 360, s1, fnt(fp, z1), '#161616', rtl)
     z2 = fit(lambda s: fnt(fp, s), s2, 78, W - 160)
     d.text((80, 500), s2, font=fnt(fp, z2), fill='#4a4741', anchor='ls')
     d.text((80, 570), 'fontfoundry.blogspot.com', font=ui(20, False), fill='#77736b', anchor='ls')
@@ -86,6 +128,7 @@ def preview(fp, name, enc):
 def pin(fp, name, enc):
     W, H = 1000, 1500
     s1, s2 = samples(enc)
+    rtl = bool(other(enc) and other(enc)[2])
     im = Image.new('RGB', (W, H), '#f6f3ed'); d = ImageDraw.Draw(im)
     d.rectangle((0, 0, W, 18), fill='#ff5b35')
     d.text((70, 100), 'FREE FONT DOWNLOAD', font=ui(28), fill='#ff5b35', anchor='ls')
@@ -99,10 +142,10 @@ def pin(fp, name, enc):
         d.text((70, 210 + round(sz * 1.12)), l2, font=ui(sz), fill='#161616', anchor='ls')
     top = 210 + round(sz * 1.12) + 70 if l2 else 290
     d.rounded_rectangle((50, top, W - 50, 1190), 32, fill='#fffdf9', outline='#e6e0d5', width=3)
-    d.text((90, top + 70), 'ENGLISH' if enc == 'latin' else 'BANGLA', font=ui(22), fill='#ff5b35', anchor='ls')
+    d.text((90, top + 70), ('ENGLISH' if enc == 'latin' else 'BANGLA' if enc in ('ansi', 'unicode') else lang_name(enc).upper()), font=ui(22), fill='#ff5b35', anchor='ls')
     mid = (top + 1190) // 2
     z1 = fit(lambda s: fnt(fp, s), s1, 150, W - 180)
-    d.text((90, mid - 30), s1, font=fnt(fp, z1), fill='#161616', anchor='ls')
+    rtl_text(d, 90, W - 90, mid - 30, s1, fnt(fp, z1), '#161616', rtl)
     z2 = fit(lambda s: fnt(fp, s), s2, 100, W - 180)
     d.text((90, mid + 150), s2, font=fnt(fp, z2), fill='#4a4741', anchor='ls')
     d.rectangle((0, 1260, W, H), fill='#20211f')
@@ -141,7 +184,7 @@ def render():
     print('to render:', len(todo))
     marks, newfail = [], []
     for f in todo:
-        fid, name, enc = str(f['id']), str(f.get('name') or f.get('fileName') or 'Font'), str(f.get('encoding') or 'unicode')
+        fid, name, enc = str(f['id']), str(f.get('name') or f.get('fileName') or 'Font'), kind_of(f)
         try:
             ext = str(f['path']).rsplit('.', 1)[-1].lower()
             with tempfile.NamedTemporaryFile(suffix='.' + ext, delete=False) as t:
