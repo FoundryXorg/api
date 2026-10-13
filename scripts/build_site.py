@@ -378,6 +378,7 @@ def build():
         rows.append('<url><loc>%s</loc><lastmod>%s</lastmod></url>' % (esc(u(p)), last or now))
     rows.append('</urlset>')
     write('sitemap.xml', '\n'.join(rows))
+    write('sitemap-fonts.xml', '\n'.join(rows))      # same list under a second name: Search Console sometimes refuses the first name, a fresh name is fetched again
     # ----- RSS feed for Pinterest: static (no redirects), links stay on the Blogger domain that is claimed in Pinterest -----
     def pub(f):
         try:
@@ -408,7 +409,7 @@ def build():
             'b': int(float(f.get('fileSize') or 0)), 'f': str(f.get('fileName') or ''), 'u': raw(f['path']),
             'p': f['_img']} for f in fonts]
     write('catalog.json', json.dumps({'version': VERSION, 'count': len(cat), 'fonts': cat}, ensure_ascii=False, separators=(',', ':')))
-    write('robots.txt', 'User-agent: *\nAllow: /\n\nSitemap: %s\n' % u('sitemap.xml'))
+    write('robots.txt', 'User-agent: *\nAllow: /\n\nSitemap: %s\nSitemap: %s\n' % (u('sitemap.xml'), u('sitemap-fonts.xml')))
     write('404.html', layout('Page not found | ' + NAME, 'This page does not exist.', '404.html',
                              '<h1>Page not found</h1><p class="lead">That page does not exist. <a href="%s">Go to the home page</a> or <a href="%s">browse all fonts</a>.</p>' % (href(''), href('fonts/'))))
     write('assets/s.css', CSS)
