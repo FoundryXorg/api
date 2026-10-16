@@ -8,7 +8,7 @@ import html, json, os, re, shutil, urllib.parse, urllib.request
 from datetime import datetime, timezone
 from email.utils import format_datetime
 
-VERSION = 'v2.1.0'
+VERSION = 'v2.2.0'
 SCRIPT_URL = os.environ.get('SCRIPT_URL', '').strip()
 SITE_URL = (os.environ.get('SITE_URL') or 'https://foundryxorg.github.io/api').rstrip('/')
 APP_URL = (os.environ.get('APP_URL') or 'https://fontfoundry.blogspot.com').rstrip('/')
@@ -31,12 +31,18 @@ def http(url):
         return r.read()
 
 
+RAW = {}
+
+
 def catalog():
     if os.environ.get('CATALOG_FILE'):
-        return json.load(open(os.environ['CATALOG_FILE'], encoding='utf-8'))['fonts']
+        d = json.load(open(os.environ['CATALOG_FILE'], encoding='utf-8'))
+        RAW.update(d)
+        return d['fonts']
     d = json.loads(http(SCRIPT_URL))
     if not d.get('ok') or not isinstance(d.get('fonts'), list):
         raise SystemExit('catalog failed')
+    RAW.update(d)
     return d['fonts']
 
 
@@ -409,6 +415,8 @@ def build():
             'b': int(float(f.get('fileSize') or 0)), 'f': str(f.get('fileName') or ''), 'u': raw(f['path']),
             'p': f['_img']} for f in fonts]
     write('catalog.json', json.dumps({'version': VERSION, 'count': len(cat), 'fonts': cat}, ensure_ascii=False, separators=(',', ':')))
+    # ----- backup copy of the site data (same shape as the Apps Script answer). The website reads this when Google's server is slow or unreachable. -----
+    write('app-catalog.json', json.dumps({'ok': True, 'version': VERSION, 'fonts': RAW.get('fonts', []), 'templates': RAW.get('templates', []), 'backup': True}, ensure_ascii=False, separators=(',', ':')))
     write('robots.txt', 'User-agent: *\nAllow: /\n\nSitemap: %s\nSitemap: %s\n' % (u('sitemap.xml'), u('sitemap-fonts.xml')))
     write('404.html', layout('Page not found | ' + NAME, 'This page does not exist.', '404.html',
                              '<h1>Page not found</h1><p class="lead">That page does not exist. <a href="%s">Go to the home page</a> or <a href="%s">browse all fonts</a>.</p>' % (href(''), href('fonts/'))))
