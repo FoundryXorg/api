@@ -8,7 +8,7 @@ import html, json, os, re, shutil, urllib.parse, urllib.request
 from datetime import datetime, timezone
 from email.utils import format_datetime
 
-VERSION = 'v2.2.0'
+VERSION = 'v2.3.0'
 SCRIPT_URL = os.environ.get('SCRIPT_URL', '').strip()
 SITE_URL = (os.environ.get('SITE_URL') or 'https://foundryxorg.github.io/api').rstrip('/')
 APP_URL = (os.environ.get('APP_URL') or 'https://fontfoundry.blogspot.com').rstrip('/')
@@ -416,7 +416,16 @@ def build():
             'p': f['_img']} for f in fonts]
     write('catalog.json', json.dumps({'version': VERSION, 'count': len(cat), 'fonts': cat}, ensure_ascii=False, separators=(',', ':')))
     # ----- backup copy of the site data (same shape as the Apps Script answer). The website reads this when Google's server is slow or unreachable. -----
-    write('app-catalog.json', json.dumps({'ok': True, 'version': VERSION, 'fonts': RAW.get('fonts', []), 'templates': RAW.get('templates', []), 'backup': True}, ensure_ascii=False, separators=(',', ':')))
+    write('app-catalog.json', json.dumps({'ok': True, 'version': VERSION, 'fonts': RAW.get('fonts', []), 'templates': RAW.get('templates', []), 'banner': RAW.get('banner'), 'auth': RAW.get('auth'), 'backup': True}, ensure_ascii=False, separators=(',', ':')))
+    # ----- small first-paint copy (newest 250 + most downloaded 250 fonts, all templates): loads fast even on a weak phone network -----
+    _fl = RAW.get('fonts', [])
+    _new = sorted(_fl, key=lambda f: str(f.get('createdAt') or ''), reverse=True)[:250]
+    _top = sorted(_fl, key=lambda f: float(f.get('downloadCount') or 0), reverse=True)[:250]
+    _seen, _lite = set(), []
+    for f in _new + _top:
+        if f.get('id') not in _seen:
+            _seen.add(f.get('id')); _lite.append(f)
+    write('app-catalog-lite.json', json.dumps({'ok': True, 'version': VERSION, 'fonts': _lite, 'templates': RAW.get('templates', []), 'banner': RAW.get('banner'), 'auth': RAW.get('auth'), 'backup': True, 'partial': True}, ensure_ascii=False, separators=(',', ':')))
     write('robots.txt', 'User-agent: *\nAllow: /\n\nSitemap: %s\nSitemap: %s\n' % (u('sitemap.xml'), u('sitemap-fonts.xml')))
     write('404.html', layout('Page not found | ' + NAME, 'This page does not exist.', '404.html',
                              '<h1>Page not found</h1><p class="lead">That page does not exist. <a href="%s">Go to the home page</a> or <a href="%s">browse all fonts</a>.</p>' % (href(''), href('fonts/'))))
