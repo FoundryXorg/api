@@ -8,7 +8,7 @@ import html, json, os, re, shutil, urllib.parse, urllib.request
 from datetime import datetime, timezone
 from email.utils import format_datetime
 
-VERSION = 'v2.3.0'
+VERSION = 'v2.4.0'
 SCRIPT_URL = os.environ.get('SCRIPT_URL', '').strip()
 SITE_URL = (os.environ.get('SITE_URL') or 'https://foundryxorg.github.io/api').rstrip('/')
 APP_URL = (os.environ.get('APP_URL') or 'https://fontfoundry.blogspot.com').rstrip('/')
@@ -207,8 +207,8 @@ def layout(title, description, path, body, image='', ld=None, head=''):
         '</head><body>',
         '<header class="top"><div class="wrap"><a class="logo" href="%s"><i>F</i>%s</a><nav aria-label="Main">'
         '<a href="%s">All fonts</a><a href="%s">Bangla fonts</a><a href="%s">English fonts</a><a href="%s">Most popular</a>'
-        '<a href="%s">Open the full library</a></nav></div></header>' % (
-            href(''), NAME, href('fonts/'), href('bangla/'), href('english/'), href('popular/'), esc(APP_URL, True)),
+        '<a href="%s">Templates</a><a href="%s">PDFs</a><a href="%s">Open the full library</a></nav></div></header>' % (
+            href(''), NAME, href('fonts/'), href('bangla/'), href('english/'), href('popular/'), href('templates/'), href('pdfs/'), esc(APP_URL, True)),
         '<main class="wrap">', body, '</main>',
         '<footer><div class="wrap"><span>&copy; %d %s &middot; Free Bangla and English fonts</span>'
         '<span><a href="%s">Library</a> &middot; <a href="%s">Bijoy / ANSI fonts</a> &middot; <a href="%s">Sitemap</a></span></div></footer>' % (
@@ -360,6 +360,109 @@ def build():
     listing('popular/', 'Most popular fonts', 'The most downloaded fonts in the library.',
             sorted(fonts, key=lambda x: (-dl(x), str(x['id']))), 'Most Popular Free Fonts')
 
+
+    # ----- PixelLab templates and PDFs: real crawlable pages (v2.4.0) -----
+    def slug2(t, fb, i):                                         # same rule as the theme: tplSlugify / pdfSlugify + last 5 id digits
+        return (re.sub(r'[^a-z0-9]+', '-', str(t or '').lower()).strip('-')[:40] or fb) + '-' + str(i)[-5:]
+
+    def mb(v):
+        try:
+            return '%.1f MB' % (float(v) / 1048576)
+        except Exception:
+            return ''
+
+    def thumb(x):
+        p = str(x.get('preview') or '')
+        return raw(p) if p else ''
+
+    def tcard(base, x, sub):
+        im = thumb(x)
+        img = ('<img src="%s" alt="%s" width="600" height="400" loading="lazy" decoding="async">' % (esc(im, True), esc(x['_t'], True))) if im else '<div class="noimg" aria-hidden="true">Aa</div>'
+        return '<li><a class="card" href="%s">%s<strong>%s</strong><small>%s</small></a></li>' % (href('%s/%s/' % (base, x['_slug'])), img, esc(x['_t']), esc(sub(x)))
+
+    def simple_listing(dir_, h1, intro, items, base, sub, title_base):
+        total = max(1, (len(items) + PER_PAGE - 1) // PER_PAGE)
+        for n in range(1, total + 1):
+            path = dir_ if n == 1 else '%spage/%d/' % (dir_, n)
+            chunk = items[(n - 1) * PER_PAGE: n * PER_PAGE]
+            pager = ''
+            if total > 1:
+                pager = '<nav class="pager" aria-label="Pages">%s</nav>' % ''.join(
+                    '<span aria-current="page">%d</span>' % k if k == n else '<a href="%s">%d</a>' % (href(dir_ if k == 1 else '%spage/%d/' % (dir_, k)), k) for k in range(1, total + 1))
+            body = '<h1>%s</h1><p class="lead">%s</p><ul class="grid">%s</ul>%s' % (esc(h1), esc(intro), ''.join(tcard(base, x, sub) for x in chunk) or '<li>Nothing here yet.</li>', pager)
+            write(path + 'index.html', layout(title_base + (' — Page %d' % n if n > 1 else '') + ' | ' + NAME, intro, path, body, thumb(chunk[0]) if chunk else ''))
+            pages.append((path, ''))
+
+    tpls = [t for t in RAW.get('templates', []) if t.get('id') and t.get('title') and t.get('path')]
+    for t in tpls:
+        t['_t'] = str(t['title']); t['_slug'] = slug2(t['title'], 'template', t['id'])
+    tpls.sort(key=lambda x: str(x.get('createdAt') or ''), reverse=True)
+    for t in tpls:
+        path = 'template/%s/' % t['_slug']
+        d = str(t.get('description') or '').strip() or 'Download the %s PixelLab project file (.plp) free. Open it in PixelLab on your phone and edit the text, colours and photos. Free for personal and business use.' % t['_t']
+        tags = [x.strip() for x in str(t.get('tags') or '').split(',') if x.strip()][:8]
+        im = thumb(t)
+        body = ('<nav class="crumbs" aria-label="Breadcrumb"><a href="%s">Home</a> &rsaquo; <a href="%s">PixelLab templates</a> &rsaquo; %s</nav>'
+                '<h1>%s <span class="badge">.plp</span></h1><p class="lead">%s</p>%s'
+                '<div class="btns"><a class="btn" href="%s" download rel="noopener">Download template (%s)</a><a class="btn alt" href="%s/?template=%s" rel="noopener">Open in the full library</a></div>'
+                '<dl class="facts"><div><dt>Type</dt><dd>PixelLab project (.plp)</dd></div><div><dt>File size</dt><dd>%s</dd></div>%s%s%s</dl>') % (
+            href(''), href('templates/'), esc(t['_t']), esc(t['_t']), esc(d),
+            ('<img class="shot" src="%s" alt="%s PixelLab template preview" loading="eager">' % (esc(im, True), esc(t['_t'], True))) if im else '',
+            esc(raw(t['path']), True), esc(mb(t.get('fileSize')) or 'file'), esc(APP_URL, True), esc(t['_slug'], True), esc(mb(t.get('fileSize')) or '-'),
+            ('<div><dt>Designer</dt><dd>%s</dd></div>' % esc(str(t.get('designer')))) if t.get('designer') else '',
+            ('<div><dt>Category</dt><dd>%s</dd></div>' % esc(str(t.get('category')))) if t.get('category') else '',
+            ('<div><dt>Tags</dt><dd>%s</dd></div>' % esc(', '.join(tags))) if tags else '')
+        ld = {'@context': 'https://schema.org', '@graph': [
+            {'@type': 'BreadcrumbList', 'itemListElement': [
+                {'@type': 'ListItem', 'position': 1, 'name': 'Home', 'item': u('')},
+                {'@type': 'ListItem', 'position': 2, 'name': 'PixelLab templates', 'item': u('templates/')},
+                {'@type': 'ListItem', 'position': 3, 'name': t['_t'], 'item': u(path)}]},
+            {'@type': 'CreativeWork', 'name': t['_t'] + ' PixelLab template', 'description': d, 'url': u(path), 'isAccessibleForFree': True,
+             'encodingFormat': 'application/octet-stream', 'publisher': {'@type': 'Organization', 'name': NAME},
+             **({'image': im} if im else {}), **({'creator': {'@type': 'Person', 'name': str(t['designer'])}} if t.get('designer') else {}),
+             **({'dateCreated': day(t)} if day(t) else {})}]}
+        write(path + 'index.html', layout('%s — Free PixelLab Template (.plp) | %s' % (t['_t'], NAME), d[:300], path, body, im, ld))
+        pages.append((path, day(t)))
+    simple_listing('templates/', 'Free PixelLab templates', 'Free PixelLab project files (.plp) for mobile graphic designers: sale posts, banners, thumbnails and more.',
+                   tpls, 'template', lambda x: str(x.get('category') or 'PixelLab template'), 'Free PixelLab Templates (.plp)')
+
+    pdfl = [x for x in RAW.get('pdfs', []) if x.get('id') and x.get('title') and x.get('path')]
+    for x in pdfl:
+        x['_t'] = str(x['title']); x['_slug'] = slug2(x['title'], 'pdf', x['id'])
+    pdfl.sort(key=lambda x: str(x.get('createdAt') or ''), reverse=True)
+    for x in pdfl:
+        path = 'pdfs/%s/' % x['_slug']
+        by = (' by ' + str(x['author'])) if x.get('author') else ''
+        d = str(x.get('description') or '').strip() or 'Read %s%s online or download the PDF free on %s.' % (x['_t'], by, NAME)
+        tags = [v.strip() for v in str(x.get('tags') or '').split(',') if v.strip()][:8]
+        im = thumb(x)
+        body = ('<nav class="crumbs" aria-label="Breadcrumb"><a href="%s">Home</a> &rsaquo; <a href="%s">PDF library</a> &rsaquo; %s</nav>'
+                '<h1>%s <span class="badge">PDF</span></h1><p class="lead">%s</p>%s'
+                '<div class="btns"><a class="btn" href="%s/?pdf=%s" rel="noopener">Read online</a><a class="btn alt" href="%s" download rel="noopener">Download PDF (%s)</a></div>'
+                '<dl class="facts">%s%s<div><dt>File size</dt><dd>%s</dd></div>%s%s</dl>') % (
+            href(''), href('pdfs/'), esc(x['_t']), esc(x['_t']), esc(d),
+            ('<img class="shot" src="%s" alt="%s PDF cover" loading="eager">' % (esc(im, True), esc(x['_t'], True))) if im else '',
+            esc(APP_URL, True), esc(x['_slug'], True), esc(raw(x['path']), True), esc(mb(x.get('fileSize')) or 'file'),
+            ('<div><dt>Author</dt><dd>%s</dd></div>' % esc(str(x['author']))) if x.get('author') else '',
+            ('<div><dt>Pages</dt><dd>%s</dd></div>' % esc(str(x['pages']))) if x.get('pages') else '',
+            esc(mb(x.get('fileSize')) or '-'),
+            ('<div><dt>Category</dt><dd>%s</dd></div>' % esc(str(x['category']))) if x.get('category') else '',
+            ('<div><dt>Tags</dt><dd>%s</dd></div>' % esc(', '.join(tags))) if tags else '')
+        ld = {'@context': 'https://schema.org', '@graph': [
+            {'@type': 'BreadcrumbList', 'itemListElement': [
+                {'@type': 'ListItem', 'position': 1, 'name': 'Home', 'item': u('')},
+                {'@type': 'ListItem', 'position': 2, 'name': 'PDF library', 'item': u('pdfs/')},
+                {'@type': 'ListItem', 'position': 3, 'name': x['_t'], 'item': u(path)}]},
+            {'@type': 'DigitalDocument', 'name': x['_t'], 'description': d, 'url': u(path), 'isAccessibleForFree': True,
+             'encodingFormat': 'application/pdf', 'publisher': {'@type': 'Organization', 'name': NAME},
+             **({'image': im} if im else {}), **({'author': {'@type': 'Person', 'name': str(x['author'])}} if x.get('author') else {}),
+             **({'numberOfPages': int(float(x['pages']))} if str(x.get('pages') or '').replace('.', '', 1).isdigit() and float(x['pages']) > 0 else {}),
+             **({'dateCreated': day(x)} if day(x) else {})}]}
+        write(path + 'index.html', layout('%s%s — Read Online & Download PDF | %s' % (x['_t'], by, NAME), d[:300], path, body, im, ld))
+        pages.append((path, day(x)))
+    simple_listing('pdfs/', 'Free PDF library', 'Read PDF books and documents online or download them free.',
+                   pdfl, 'pdfs', lambda x: (str(x.get('author') or 'PDF') + ((' · %s pages' % x['pages']) if x.get('pages') else '')), 'Free PDF Library')
+
     # ----- home -----
     latest = fonts[:24]
     top = sorted(fonts, key=lambda x: (-dl(x), str(x['id'])))[:12]
@@ -372,6 +475,7 @@ def build():
     ) % (format(len(fonts), ','), href('fonts/'), format(len(fonts), ','), href('bangla/'), format(len(bangla), ','),
          href('english/'), format(len(by_enc.get('latin', [])), ','), href('ansi/'), format(len(by_enc.get('ansi', [])), ','), href('popular/'),
          ''.join(card(x) for x in latest), href('fonts/'), ''.join(card(x) for x in top))
+    body += ('<h2>Templates and PDFs</h2><div class="cats"><a href="%s">PixelLab templates (%d)</a><a href="%s">PDF library (%d)</a></div>' % (href('templates/'), len(tpls), href('pdfs/'), len(pdfl)))
     ld = {'@context': 'https://schema.org', '@type': 'WebSite', 'name': NAME, 'url': u(''), 'alternateName': 'Font Foundry Bangla'}
     write('index.html', layout('%s — Free Fonts to Download (Bangla, English, Hindi, Urdu, Arabic)' % NAME,
                                'Download free fonts in Bangla, English, Hindi, Urdu, Arabic and more. Preview every font before you download. Unicode and Bijoy / ANSI Bangla fonts.',
